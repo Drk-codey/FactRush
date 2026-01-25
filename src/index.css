@@ -1,0 +1,21 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-white font-sans overflow-x-hidden antialiased;
+  }
+}
+
+@layer utilities {
+  .text-neon-cyan {
+    text-shadow: 0 0 10px rgba(0, 245, 255, 0.7);
+  }
+  .text-neon-purple {
+    text-shadow: 0 0 10px rgba(168, 85, 247, 0.7);
+  }
+  .box-shadow-neon {
+    box-shadow: 0 0 15px rgba(0, 245, 255, 0.3);
+  }
+}
