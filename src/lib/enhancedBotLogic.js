@@ -1021,3 +1021,237 @@ export const FACT_DATABASE = {
   }
 };
 
+// Fact tracking system
+
+class FactTracker {
+  constructor() {
+    this.usedFacts = new Map(); // Map<botId, Set<factText>>
+    this.globalUsedFacts = new Set();
+  }
+
+  // Initialize tracking for a bot
+  initBot(botId) {
+    if (!this.usedFacts.has(botId)) {
+      this.usedFacts.set(botId, new Set());
+    }
+  }
+
+  // Check if fact has been used globally or by specific bot
+  isFactUsed(factText, botId = null) {
+    if (this.globalUsedFacts.has(factText)) {
+      return true;
+    }
+    if (botId && this.usedFacts.get(botId)?.has(factText)) {
+      return true;
+    }
+    return false;
+  }
+
+  // Mark fact as used
+  markAsUsed(factText, botId) {
+    this.globalUsedFacts.add(factText);
+    if (botId) {
+      this.initBot(botId);
+      this.usedFacts.get(botId).add(factText);
+    }
+  }
+
+  // Get unused facts for a bot
+  getUnusedFacts(category, difficulty, botId) {
+    const allFacts = FACT_DATABASE[category]?.[difficulty] || [];
+    return allFacts.filter(fact => !this.isFactUsed(fact, botId));
+  }
+
+  // Reset for new game
+  reset() {
+    this.usedFacts.clear();
+    this.globalUsedFacts.clear();
+  }
+
+  // Get stats
+  getStats() {
+    return {
+      totalUsed: this.globalUsedFacts.size,
+      perBot: Array.from(this.usedFacts.entries()).map(([botId, facts]) => ({
+        botId,
+        count: facts.size
+      }))
+    };
+  }
+}
+
+// Global tracker instance
+export const factTracker = new FactTracker();
+
+// Intelligent Claim generator
+
+export const getSmartBotClaim = (category, difficulty, botProfile, factTracker) => {
+  // Adjust difficulty based on bot preference
+  let targetDifficulty = difficulty;
+  
+  if (botProfile.personality.difficultyPreference === 'Easy' && difficulty === 'Hard') {
+    targetDifficulty = 'Medium';
+  } else if (botProfile.personality.difficultyPreference === 'Hard' && difficulty === 'Easy') {
+    targetDifficulty = 'Medium';
+  }
+
+  // Get unused facts for this bot
+  const unusedFacts = factTracker.getUnusedFacts(category, targetDifficulty, botProfile.id);
+  
+  // Fallback to other difficulties if running out
+  if (unusedFacts.length === 0) {
+    const allDifficulties = ['Easy', 'Medium', 'Hard'];
+    for (const diff of allDifficulties) {
+      const facts = factTracker.getUnusedFacts(category, diff, botProfile.id);
+      if (facts.length > 0) {
+        targetDifficulty = diff;
+        unusedFacts.push(...facts);
+        break;
+      }
+    }
+  }
+
+  // If still no facts, reset bot's history (rare case)
+  if (unusedFacts.length === 0) {
+    console.warn(`Bot ${botProfile.username} ran out of facts, resetting...`);
+    factTracker.usedFacts.get(botProfile.id)?.clear();
+    return getSmartBotClaim(category, difficulty, botProfile, factTracker);
+  }
+
+  // Select fact based on bot personality
+  let selectedFact;
+  if (botProfile.personality.style === 'Academic') {
+    // Academic bots prefer longer, detailed facts
+    selectedFact = unusedFacts.sort((a, b) => b.length - a.length)[0];
+  } else if (botProfile.personality.style === 'Casual') {
+    // Casual bots prefer shorter facts
+    selectedFact = unusedFacts.sort((a, b) => a.length - b.length)[0];
+  } else {
+    // Random selection for others
+    selectedFact = unusedFacts[Math.floor(Math.random() * unusedFacts.length)];
+  }
+
+  // Mark as used
+  factTracker.markAsUsed(selectedFact, botProfile.id);
+
+  return {
+    content: selectedFact,
+    difficulty: targetDifficulty,
+    type: determineClaimType(selectedFact)
+  };
+};
+
+// CLAIM TYPE DETECTION
+// ============================================
+
+const determineClaimType = (claimText) => {
+  const text = claimText.toLowerCase();
+  
+  // Comparative claims
+  if (text.includes('more than') || text.includes('less than') || 
+      text.includes('faster than') || text.includes('larger than') ||
+      text.includes('compared to') || text.includes('versus')) {
+    return 'Comparative';
+  }
+  
+  // Trend claims
+  if (text.includes('increased') || text.includes('decreased') ||
+      text.includes('growing') || text.includes('declining') ||
+      text.includes('rose') || text.includes('fell')) {
+    return 'Trend';
+  }
+  
+  // Predictive claims (usually past predictions)
+  if (text.includes('predicted') || text.includes('forecast') ||
+      text.includes('estimated') || text.includes('expected')) {
+    return 'Predictive';
+  }
+  
+  // Default to quick fact
+  return 'Quick Fact';
+};
+
+// ============================================
+// CONFIDENCE SCORE GENERATOR
+// ============================================
+
+export const getBotConfidence = (botProfile, claimDifficulty) => {
+  const [min, max] = botProfile.personality.confidenceRange;
+  
+  // Adjust confidence based on difficulty match
+  let adjustedMin = min;
+  let adjustedMax = max;
+  
+  if (claimDifficulty === 'Hard' && botProfile.personality.difficultyPreference !== 'Hard') {
+    adjustedMin -= 10;
+    adjustedMax -= 5;
+  } else if (claimDifficulty === 'Easy' && botProfile.personality.difficultyPreference === 'Hard') {
+    adjustedMin += 5;
+    adjustedMax = Math.min(100, adjustedMax + 5);
+  }
+  
+  return Math.floor(Math.random() * (adjustedMax - adjustedMin + 1)) + adjustedMin;
+};
+
+// ============================================
+// BOT SUBMISSION STRATEGY
+// ============================================
+
+export const shouldBotSubmit = (botProfile, gameState) => {
+  const { timeElapsed, totalClaims, botClaims } = gameState;
+  
+  // Aggressive bots submit more frequently
+  if (botProfile.personality.style === 'Aggressive') {
+    return Math.random() > 0.2; // 80% chance
+  }
+  
+  // Skeptical bots wait and submit less
+  if (botProfile.personality.style === 'Skeptical') {
+    return Math.random() > 0.6; // 40% chance
+  }
+  
+  // Academic bots pace themselves
+  if (botProfile.personality.style === 'Academic') {
+    const averageRate = totalClaims / (timeElapsed || 1);
+    return botClaims < averageRate; // Match average pace
+  }
+  
+  // Casual bots are random
+  if (botProfile.personality.style === 'Casual') {
+    return Math.random() > 0.5; // 50% chance
+  }
+  
+  // Default (Precise)
+  return Math.random() > 0.3; // 70% chance
+};
+
+// ============================================
+// HELPER: Get Random Item with Weights
+// ============================================
+
+const weightedRandom = (items, weights) => {
+  const totalWeight = weights.reduce((sum, w) => sum + w, 0);
+  let random = Math.random() * totalWeight;
+  
+  for (let i = 0; i < items.length; i++) {
+    if (random < weights[i]) {
+      return items[i];
+    }
+    random -= weights[i];
+  }
+  
+  return items[items.length - 1];
+};
+
+// ============================================
+// EXPORT UTILITY FUNCTIONS
+// ============================================
+
+export const initializeBotGame = (bots) => {
+  factTracker.reset();
+  bots.forEach(bot => factTracker.initBot(bot.id));
+};
+
+export const getBotStats = () => {
+  return factTracker.getStats();
+};

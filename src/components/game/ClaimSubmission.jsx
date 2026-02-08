@@ -7,6 +7,14 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Send, Globe, Sparkles, TrendingUp, Zap } from 'lucide-react';
 import { getRandomBotClaim } from '../../lib/botLogic';
 import confetti from 'canvas-confetti';
+import {
+  BOT_PROFILES,
+  getSmartBotClaim,
+  getBotConfidence,
+  shouldBotSubmit,
+  factTracker,
+  initializeBotGame
+} from '../../lib/enhancedBotLogic';
 
 const ClaimSubmission = () => {
   const { addClaim, claims, room, players, setPhase } = useGameStore();
@@ -17,33 +25,101 @@ const ClaimSubmission = () => {
   const [combo, setCombo] = useState(0);
 
   // --- BOT LOGIC ---
-  useEffect(() => {
-    const bots = players.filter(p => p.is_bot);
-    if (bots.length === 0) return;
+  // useEffect(() => {
+  //   const bots = players.filter(p => p.is_bot);
+  //   if (bots.length === 0) return;
 
-    const botIntervals = bots.map(bot => {
-      // Randomize submission freq based on 'bot skill' concept (simple random for now)
-      const delay = Math.random() * 10000 + 5000; // 5-15s
-      return setInterval(() => {
-        if (Math.random() > 0.3) { // 70% chance to submit
-          const claimContent = getRandomBotClaim(room.category, room.difficulty);
-          addClaim({
-            id: `c_${Date.now()}_${bot.id}`,
-            room_id: room.room_code,
-            player_id: bot.id,
-            content: claimContent,
-            confidence_score: Math.floor(Math.random() * 30) + 70,
-            source_url: '',
-            status: 'PENDING',
-            type: 'Quick Fact'
-          });
-        }
-      }, delay);
-    });
+  //   const botIntervals = bots.map(bot => {
+  //     // Randomize submission freq based on 'bot skill' concept (simple random for now)
+  //     const delay = Math.random() * 10000 + 5000; // 5-15s
+  //     return setInterval(() => {
+  //       if (Math.random() > 0.3) { // 70% chance to submit
+  //         const claimContent = getRandomBotClaim(room.category, room.difficulty);
+  //         addClaim({
+  //           id: `c_${Date.now()}_${bot.id}`,
+  //           room_id: room.room_code,
+  //           player_id: bot.id,
+  //           content: claimContent,
+  //           confidence_score: Math.floor(Math.random() * 30) + 70,
+  //           source_url: '',
+  //           status: 'PENDING',
+  //           type: 'Quick Fact'
+  //         });
+  //       }
+  //     }, delay);
+  //   });
 
-    return () => botIntervals.forEach(clearInterval);
-  }, [players, room, addClaim]);
+  //   return () => botIntervals.forEach(clearInterval);
+  // }, [players, room, addClaim]);
   // ----------------
+
+  // New bot logic
+// Initialize bot game on component mount
+useEffect(() => {
+  const bots = players.filter(p => p.is_bot);
+  if (bots.length > 0) {
+    initializeBotGame(bots);
+  }
+}, []); // Run once on mount
+
+// Bot submission logic with personality
+useEffect(() => {
+  const bots = players.filter(p => p.is_bot);
+  if (bots.length === 0 || !room) return;
+
+  const botIntervals = bots.map(bot => {
+    // Find bot's profile
+    const botProfile = BOT_PROFILES.find(b => b.id === bot.id) || BOT_PROFILES[0];
+    
+    // Use bot's personality-driven frequency
+    const frequency = botProfile.personality.claimFrequency;
+    
+    return setInterval(() => {
+      // Check if bot should submit (personality-based decision)
+      const gameState = {
+        timeElapsed: Date.now() - (room.startTime || Date.now()),
+        totalClaims: claims.length,
+        botClaims: claims.filter(c => c.player_id === bot.id).length
+      };
+      
+      if (!shouldBotSubmit(botProfile, gameState)) {
+        return; // Skip this submission
+      }
+      
+      try {
+        // Get intelligent, non-repeating claim
+        const claim = getSmartBotClaim(
+          room.category, 
+          room.difficulty, 
+          botProfile, 
+          factTracker
+        );
+        
+        // Get personality-driven confidence
+        const confidence = getBotConfidence(botProfile, claim.difficulty);
+        
+        addClaim({
+          id: `c_${Date.now()}_${bot.id}`,
+          room_id: room.room_code,
+          player_id: bot.id,
+          content: claim.content,
+          confidence_score: confidence,
+          source_url: '', // Bots don't provide sources in this version
+          status: 'PENDING',
+          type: claim.type
+        });
+        
+        console.log(`🤖 ${botProfile.username} submitted: "${claim.content.substring(0, 50)}..."`);
+      } catch (error) {
+        console.error(`Bot ${bot.id} submission error:`, error);
+      }
+    }, frequency);
+  });
+
+  return () => {
+    botIntervals.forEach(clearInterval);
+  };
+}, [players, room]); // Remove addClaim from dependencies to avoid recreating intervals
 
   const handleSubmit = async () => {
     if (!claimText.trim()) return;

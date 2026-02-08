@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGameStore } from '../../stores/gameStore';
 import { CATEGORIES, DIFFICULTIES } from '../../utils/constants';
-import { BOT_PROFILES } from '../../lib/botLogic';
+import { BOT_PROFILES } from '../../lib/enhancedBotLogic';
 import Button from '../ui/Button';
 import Card from '../ui/Card';
 import { Users, Play, Settings, Copy, CheckCircle, Bot, Zap, Clock } from 'lucide-react';
@@ -58,15 +58,16 @@ const Lobby = () => {
     const existingBots = players.filter(p => p.is_bot).length;
     if (existingBots >= 5) return;
 
-    const botProfile = BOT_PROFILES[existingBots % BOT_PROFILES.length];
+    const botProfile = BOT_PROFILES[existingBots];
+
     const botPlayer = {
-      id: `bot_${Date.now()}`,
+      id: botProfile.id, // Use consistent ID from profile
       username: botProfile.username,
       is_host: false,
       is_ready: true,
       avatar: botProfile.avatar,
       is_bot: true,
-      style: botProfile.style
+      personality: botProfile.personality
     };
     addPlayer(botPlayer);
   };

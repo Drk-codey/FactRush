@@ -67,7 +67,12 @@ export const useGameStore = create((set) => ({
   setDisputes: (disputes) => set({ disputes }),
   addDispute: (dispute) => set((state) => ({ disputes: [...state.disputes, dispute] })),
   setTimeLeft: (time) => set({ timeLeft: time }),
-  setPhase: (phase) => set({ phase }),
+  setPhase: (phase) => set((state) => ({
+  phase,
+  room: phase === 'SUBMISSION' 
+    ? { ...state.room, startTime: Date.now() } 
+    : state.room
+})),
 
   resetGame: () => set({ room: null, players: [], claims: [], disputes: [], phase: 'LOBBY', timeLeft: 0 }),
 }));
