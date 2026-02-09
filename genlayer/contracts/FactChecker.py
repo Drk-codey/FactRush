@@ -1,3 +1,5 @@
+# v0.1.0
+# { "Depends": "py-genlayer:latest" }
 # genlayer/contracts/FactVerificator.py
 
 """
@@ -14,7 +16,7 @@ This contract implements:
 from genlayer import *
 import json
 
-class FactVerificator:
+class FactVerificator(gl.Contract):
     """
     Intelligent Contract for verifying factual claims
     using multiple AI validators and web search
@@ -42,6 +44,7 @@ class FactVerificator:
     # CLAIM SUBMISSION
     # ============================================
     
+    @gl.public
     def submit_claim(self, claim_id: str, player_id: str, content: str, source_url: str = ""):
         """
         Submit a new claim for verification
@@ -200,6 +203,7 @@ Rules:
     # DISPUTES (Expanded Consensus)
     # ============================================
     
+    @gl.public 
     def submit_dispute(self, dispute_id: str, claim_id: str, player_id: str, reasoning: str):
         """
         Submit a dispute for a claim verification
@@ -275,7 +279,8 @@ Rules:
     # SCORING
     # ============================================
     
-    def update_score(self, player_id: str, points: int):
+    @gl.public 
+    def update_score(self, player_id: str, points: int) -> dict:
         """
         Update player score
         
